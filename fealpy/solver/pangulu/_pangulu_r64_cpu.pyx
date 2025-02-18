@@ -1,55 +1,93 @@
-cimport ._pangulu_base as base
 from libc.stdlib cimport malloc, free
-import numpy as np
 
-# 导入特定版本头文件
 cdef extern from "pangulu_r64_cpu.h":
+
+    ctypedef struct pangulu_init_options:
+        int nthread
+        int nb
+
+    ctypedef struct pangulu_gstrf_options:
+        pass
+
+    ctypedef struct pangulu_gstrs_options:
+        pass
+
     void pangulu_init(
         int n, long long nnz, long* csr_rowptr,
         int* csr_colidx, double* csr_value,
-        base.pangulu_init_options* opts, void** handle
+        pangulu_init_options* opts, void** handle
     )
     void pangulu_gstrf(
-            base.pangulu_gstrf_options *gstrf_options, 
+            pangulu_gstrf_options *gstrf_options, 
             void **handle);
     void pangulu_gstrs(double *rhs, 
-                       base.pangulu_gstrs_options *gstrs_options, 
+                       pangulu_gstrs_options *gstrs_options, 
                        void **handle);
     void pangulu_gssv(double *rhs, 
-                      base.pangulu_gstrf_options *gstrf_options, 
-                      base.pangulu_gstrs_options *gstrs_options, void **handle);
+                      pangulu_gstrf_options *gstrf_options, 
+                      pangulu_gstrs_options *gstrs_options, void **handle);
     void pangulu_finalize(void **handle);
 
-# Python 类封装
-cdef class r64_cpu_solver:
-    cdef void* handle
-    cdef int nthread, nb
+cdef class InitOptions:
+    cdef pangulu_init_options _opts
+    def __init__(self, int nthread=0, int nb=0):
+        self._opts.nthread = nthread
+        self._opts.nb = nb
+    @property
+    def nthread(self):
+        return self._opts.nthread
+    @nthread.setter
+    def nthread(self, value):
+        self._opts.nthread = value
+    @property
+    def nb(self):
+        return self._opts.nb
+    @nb.setter
+    def nb(self, value):
+        self._opts.nb = value
 
-    def __cinit__(self, int nthread=4, int nb=64):
-        self.nthread = nthread
-        self.nb = nb
-        self.handle = NULL
+cdef class GstrfOptions:
+    cdef pangulu_gstrf_options _opts  # 假设后续可能需要参数
 
-    def initialize(self, csr_matrix):
-        # 将 SciPy CSR 矩阵转为 C 数组
-        cdef long* rowptr = <long*> csr_matrix.indptr.data
-        cdef int* colidx = <int*> csr_matrix.indices.data
-        cdef double* data = <double*> csr_matrix.data.data
+cdef class GstrsOptions:
+    cdef pangulu_gstrs_options _opts
 
-        cdef base.pangulu_init_options opts
-        opts.nthread = self.nthread
-        opts.nb = self.nb
-
-        pangulu_init(
-            csr_matrix.shape[0], csr_matrix.nnz,
-            rowptr, colidx, data, &opts, &self.handle
-        )
-
-    def solve(self, rhs: np.ndarray) -> np.ndarray:
-        cdef double[:] rhs_view = rhs.astype(np.float64)
-        pangulu_gstrs(&rhs_view[0], NULL, &self.handle)
-        return rhs.copy()
-
+cdef class Handle:
+    cdef void* _handle
     def __dealloc__(self):
-        if self.handle != NULL:
-            pangulu_finalize(&self.handle)
+        if self._handle != NULL:
+            pangulu_finalize(&self._handle)
+
+def init(int n, long long nnz, long[::1] csr_rowptr, int[::1] csr_colidx, 
+         double[::1] csr_value, InitOptions opts not None):
+    cdef Handle handle_obj = Handle()
+    pangulu_init(n, nnz, &csr_rowptr[0], &csr_colidx[0], &csr_value[0], 
+                &opts._opts, &handle_obj._handle)
+    return handle_obj
+
+def gstrf(GstrfOptions opts, Handle handle not None):
+    """
+    performs distribute sparse LU factorisation. Note that you should
+    call pangulu_init() before calling pangulu_gstrf() to create a handle of PanguLU.
+    """
+    pangulu_gstrf(&opts._opts if opts is not None else NULL, &handle._handle)
+
+def gstrs(double[::1] rhs, GstrsOptions opts, Handle handle not None):
+    """
+    solves linear equation with factorised L and U, and right-hand
+    side vector b. Note that you should call pangulu_gstrf() before calling
+    pangulu_gstrs() to ensure that L and U are available.
+    """
+    pangulu_gstrs(&rhs[0], &opts._opts if opts is not None else NULL, 
+                 &handle._handle)
+
+def gssv(double[::1] rhs, GstrfOptions gstrf_opts, GstrsOptions gstrs_opts, 
+         Handle handle not None):
+    """
+    pangulu_gssv() solves the linear equation with A and right-hand size b. This
+    function is equivalent to calling pangulu_gstrs() after pangulu_gstrf().
+    """
+    pangulu_gssv(&rhs[0], 
+                &gstrf_opts._opts if gstrf_opts is not None else NULL,
+                &gstrs_opts._opts if gstrs_opts is not None else NULL,
+                &handle._handle)
