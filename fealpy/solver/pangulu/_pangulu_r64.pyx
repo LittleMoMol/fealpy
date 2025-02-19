@@ -1,6 +1,6 @@
 from libc.stdlib cimport malloc, free
 
-cdef extern from "pangulu_r64_cpu.h":
+cdef extern from "pangulu_r64.h":
 
     ctypedef struct pangulu_init_options:
         int nthread

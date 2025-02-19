@@ -26,15 +26,24 @@ ext_modules_dict={
             sources=['fealpy/solver/mumps/_dmumps.pyx'],
             libraries=['dmumps', 'mumps_common'],
             ),
-        "pangulu": Extension(
-            'fealpy.solver.pangulu._pangu_r64_cpu',
-            sources=['fealpy/solver/pangulu/_pangulu_r64_cpu.pyx'],
-            libraries=[f'pangulu_r64_cpu'],
-            library_dirs=[os.path.abspath('/usr/local/pangulu/lib')],
+        "pangulu_cpu": Extension(
+            'fealpy.solver.pangulu._pangulu_r64_cpu',
+            sources=['fealpy/solver/pangulu/_pangulu_r64.pyx'],
+            libraries=[f'pangulu_r64_cpu', 'metis', 'openblas'],
+            library_dirs=['/usr/local/pangulu/lib'],
             include_dirs=['/usr/local/pangulu/include'],  # 指向生成的头文件
             extra_compile_args=['-fopenmp'],
             extra_link_args=['-fopenmp']
             ),
+        "pangulu_gpu": Extension(
+            'fealpy.solver.pangulu._pangulu_r64_gpu',
+            sources=['fealpy/solver/pangulu/_pangulu_r64.pyx'],
+            libraries=[f'pangulu_r64_gpu', 'metis', 'openblas', 'cudart', 'cusparse'],
+            library_dirs=['/usr/local/pangulu/lib', '/usr/local/cuda/lib64'],
+            include_dirs=['/usr/local/pangulu/include'], 
+            extra_compile_args=['-fopenmp'],
+            extra_link_args=['-fopenmp']
+            )
         }
 
 def get_ext_modules():
@@ -42,7 +51,8 @@ def get_ext_modules():
     if os.getenv("WITH_MUMPS"):
         ext_modules.append(ext_modules_dict['mumps'])
     if os.getenv("WITH_PANGULU"):
-        ext_modules.append(ext_modules_dict['pangulu'])
+        ext_modules.append(ext_modules_dict['pangulu_cpu'])
+        ext_modules.append(ext_modules_dict['pangulu_gpu'])
     return ext_modules
 
 
