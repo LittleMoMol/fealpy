@@ -81,3 +81,44 @@ setup(
     include_package_data=True,
     python_requires=">=3.10",
 )
+
+def build_pangulu():
+    """
+    """
+    # install system dependencies
+    os.system("sudo apt install -y libopenblas-dev libmetis-dev libopenmpi-dev")
+    remote_url = 'git@github.com:SuperScientificSoftwareLaboratory/PanguLU.git'
+    local_path = '/tmp/PanguLU'
+    if not os.path.exists(local_path):
+        print(f"Cloning repository to {local_path}...")
+        os.system(f"git clone {remote_url} {local_path}")
+    else:
+        print(f"Repository already exists at {local_path}")
+    os.chdir(local_path)
+    generalFlags = """
+        COMPILE_LEVEL = -O3
+        CC = gcc $(COMPILE_LEVEL) #-fsanitize=address
+        MPICC = mpicc $(COMPILE_LEVEL) #-fsanitize=address
+        OPENBLAS_INC = -I/usr/include/x86_64-linux-gnu/openblas-openmp/
+        OPENBLAS_LIB = -L/usr/lib/x86_64-linux-gnu/openblas-openmp/ -lopenblas
+        MPICCFLAGS = $(OPENBLAS_INC) $(CUDA_INC) $(OPENBLAS_LIB) -fopenmp -lpthread -lm
+        MPICCLINK = $(OPENBLAS_LIB)
+        METISFLAGS =  -I/usr/include
+    """
+
+    cudaFlags = """
+        #0201000,GPU_CUDA
+        CUDA_PATH = /usr/local/cuda
+        CUDA_INC = -I/usr/local/cuda/include
+        CUDA_LIB = -L/usr/local/cuda/lib64 -lcudart -lcusparse
+        NVCC = nvcc $(COMPILE_LEVEL)
+        NVCCFLAGS = $(PANGULU_FLAGS) -w -Xptxas -dlcm=cg -gencode=arch=compute_61,code=sm_61 -gencode=arch=compute_61,code=compute_61 $(CUDA_INC) $(CUDA_LIB)
+    """
+
+    datatype = ['R64', 'R32']
+    paltform = ['cpu', 'gpu']
+    for dt in datatype:
+        for pf in paltform:
+            panguluFlags = f"-DPANGULU_LOG_INFO -DCALCULATE_TYPE_{dt} -DMETIS -DPANGULU_MC64 -DHT_IS_OPEN"
+            os.system(f"make -f Makefile.{dt}_{pf}") 
+            os.system("echo {compile_flags} > make.inc")
